@@ -1,7 +1,8 @@
+import 'package:agenda_contato_flutter/modelo/Contato.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
-final String tabelaContato = "CONTATO";
+final String tabela = "CONTATOS";
 final String idColuna = "ID";
 final String nomeColuna = "NOME";
 final String emailColuna = "EMAIL";
@@ -15,67 +16,117 @@ class ContatoHelper {
   //_instance é um objeto da propria classe
   static final ContatoHelper _instance = ContatoHelper.internal();
 
-  //contacto helper. isntance voce tem a instancia do contato
   factory ContatoHelper() => _instance;
 
-  //construtor interno
   ContatoHelper.internal();
 
   //banco de dados da classe
-  Database _db;
+  Database _dbPrincipal;
 
   Future<Database> get db async {
-    if (db != null) {
-      return _db;
+    if (_dbPrincipal != null) {
+      print("db já existe");
+      //já tem uma instancia de banco criada
+      return _dbPrincipal;
     } else {
+      print("db não existe");
       //executa a primeira vez
-      _db = await iniciarDb();
-      return _db;
+      _dbPrincipal = await iniciarDb();
+      return _dbPrincipal;
     }
   }
 
   Future<Database> iniciarDb() async {
+    print("iniciarDb");
     final dataBasePath = await getDatabasesPath();
-    final path = join(dataBasePath, 'contato.db');
+    final caminho = join(dataBasePath, 'contatos.db');
 
     //abrir o banco de dados
-    return await openDatabase(path, version: 1, onCreate: (Database db, int versaoAtual) async {
-      await db.execute("CREATE TABLE $tabelaContato ($idColuna INTEGER PRIMARY KEY, $nomeColuna TEXT, $emailColuna TEXT, $telefoneColuna TEXT, $imagemColuna TEXT)");
+    return await openDatabase(caminho, version: 1, onCreate: (Database db, int versaoAtual) async {
+      await db.execute(
+        "CREATE TABLE $tabela ("
+        "$idColuna INTEGER PRIMARY KEY, "
+        "$nomeColuna TEXT, "
+        "$emailColuna TEXT, "
+        "$telefoneColuna TEXT, "
+        "$imagemColuna TEXT"
+        ")",
+      );
     });
   }
-}
 
-class Contato {
-  int id;
-  String nome;
-  String email;
-  String telefone;
-  String imagem;
-
-  //para armazenar os dados no celular
-  Contato.mapParaContato(Map map) {
-    id = map[idColuna];
-    nome = map[nomeColuna];
-    email = map[emailColuna];
-    telefone = map[telefoneColuna];
-    imagem = map[imagemColuna];
+  Future<Contato> salvarContato(Contato contato) async {
+    print("salvarContato");
+    //pegar o banco de dados
+    Database database = await db;
+    contato.id = await database.insert(tabela, contato.contatoParaMapa());
+    return contato;
   }
 
-  Map contatoParaMapa() {
-    Map<String, dynamic> map = {
-      nomeColuna: nome,
-      emailColuna: email,
-      telefoneColuna: telefone,
-      imagemColuna: imagem,
-    };
-    if (id != null) {
-      map[imagemColuna] = id;
+  Future<Contato> pegarContato(int id) async {
+    //pegar o banco de dados
+    Database database = await db;
+    List<Map> lista = await database.query(
+      tabela,
+      columns: [
+        idColuna,
+        nomeColuna,
+        emailColuna,
+        telefoneColuna,
+        imagemColuna,
+      ],
+      where: "$idColuna = ?",
+      whereArgs: [id],
+    );
+    if (lista.length > 0) {
+      return Contato.mapParaContato(lista.first);
+    } else {
+      return null;
     }
-    return map;
   }
 
-  @override
-  String toString() {
-    return "Contato: id: $id - nome: $nome - email:$email - telefone: $telefone - imagem: $imagem";
+  Future<int> deletarContato(int id) async {
+    //pegar o banco de dados
+    Database database = await db;
+    return await database.delete(
+      tabela,
+      where: "$idColuna = ?",
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> atualizarContato(Contato contato) async {
+    //pegar o banco de dados
+    Database database = await db;
+    return await database.update(
+      tabela,
+      contato.contatoParaMapa(),
+      where: "$idColuna = ?",
+      whereArgs: [contato.id],
+    );
+  }
+
+  Future<List> listarTodosContatos() async {
+    print("listarTodosContatos");
+    //pegar o banco de dados
+    Database database = await db;
+    List listaMap = await database.rawQuery("SELECT * FROM $tabela");
+    List<Contato> listaContatos = new List();
+    for (Map linha in listaMap) {
+      listaContatos.add(Contato.mapParaContato(linha));
+    }
+    return listaContatos;
+  }
+
+  Future<int> quantidadeDeContatos() async {
+    //pegar o banco de dados
+    Database database = await db;
+    return Sqflite.firstIntValue(await database.rawQuery("SELECT COUNT(1) FROM $tabela"));
+  }
+
+  Future fecharBancoDados() async {
+    //pegar o banco de dados
+    Database database = await db;
+    database.close();
   }
 }
